@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.12</title>
+    <title>Minutes AI | Pro v2.14</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.12</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.14</p>
     </div>
 
     <script type="text/babel">
@@ -110,9 +110,9 @@
             const [targetEmail, setTargetEmail] = useState(localStorage.getItem('minutes_email') || '');
             const [senderEmail, setSenderEmail] = useState(localStorage.getItem('minutes_sender_email') || '');
             
-            const [transcript, setTranscript] = useState('');
+            const [transcript, setTranscript] = useState(localStorage.getItem('minutes_live_transcript') || '');
             const [interim, setInterim] = useState('');
-            const [topic, setTopic] = useState('');
+            const [topic, setTopic] = useState(localStorage.getItem('minutes_live_topic') || '');
             
             const [isRecording, setIsRecording] = useState(false);
             const [isLoading, setIsLoading] = useState(false);
@@ -123,8 +123,7 @@
 
             const recognitionRef = useRef(null);
             const isRecRef = useRef(false);
-            const fullTextRef = useRef('');     
-            const currentRunFinalRef = useRef(''); 
+            const fullTextRef = useRef(localStorage.getItem('minutes_live_transcript') || '');     
 
             useEffect(() => {
                 const loader = document.getElementById('loader');
@@ -142,46 +141,26 @@
                     rec.onresult = (e) => {
                         if (!isRecRef.current) return;
                         
-                        let finalStr = ''; 
                         let interimStr = '';
-                        
-                        // HIGH-PRECISION DEDUPLICATOR (Prevents Android duplication)
-                        // Logic: If chunk starts with previous text, it's an overwrite, not an append.
-                        for (let i = 0; i < e.results.length; ++i) {
-                            let chunk = e.results[i][0].transcript.trim();
-                            if (!chunk) continue;
-                            
-                            if (e.results[i].isFinal) {
-                                let cleanFinal = finalStr.trim().toLowerCase();
-                                let cleanChunk = chunk.toLowerCase();
-                                
-                                if (cleanFinal && cleanChunk.startsWith(cleanFinal)) {
-                                    finalStr = chunk + ' ';
-                                } else {
-                                    finalStr += chunk + ' ';
-                                }
+                        // HIGH-PRECISION REPETITION FIX (From MeetingCoach)
+                        // This logic only processes NEW finalized chunks starting at resultIndex
+                        for (let i = e.resultIndex; i < e.results.length; ++i) {
+                            const result = e.results[i];
+                            const chunk = result[0].transcript;
+                            if (result.isFinal) {
+                                fullTextRef.current += chunk + ' ';
+                                localStorage.setItem('minutes_live_transcript', fullTextRef.current);
                             } else {
-                                let cleanInterim = interimStr.trim().toLowerCase();
-                                let cleanChunk = chunk.toLowerCase();
-                                
-                                if (cleanInterim && cleanChunk.startsWith(cleanInterim)) {
-                                    interimStr = chunk + ' ';
-                                } else {
-                                    interimStr += chunk + ' ';
-                                }
+                                interimStr += chunk;
                             }
                         }
                         
-                        currentRunFinalRef.current = finalStr;
                         setInterim(interimStr);
-                        setTranscript(fullTextRef.current + finalStr);
+                        setTranscript(fullTextRef.current);
                     };
 
                     rec.onend = () => { 
                         if (isRecRef.current) { 
-                            fullTextRef.current += currentRunFinalRef.current;
-                            currentRunFinalRef.current = '';
-                            setTranscript(fullTextRef.current);
                             try { rec.start(); } catch(err) {} 
                         } 
                     };
@@ -218,30 +197,14 @@
                     isRecRef.current = false;
                     if (recognitionRef.current) {
                         recognitionRef.current.stop();
-                        // HARD SHUTDOWN: prevent any more processing
-                        recognitionRef.current.onresult = null;
-                        recognitionRef.current.onend = null;
                     }
                     setIsRecording(false);
                     setVols(new Array(10).fill(2));
-                    
-                    // Final text capture
-                    fullTextRef.current += currentRunFinalRef.current;
-                    currentRunFinalRef.current = '';
-                    setTranscript(fullTextRef.current);
                     setInterim('');
                     
-                    // Re-init for next time
-                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                    if (SpeechRecognition) {
-                        const rec = new SpeechRecognition();
-                        rec.continuous = true;
-                        rec.interimResults = true;
-                        rec.lang = 'en-US';
-                        rec.onresult = recognitionRef.current?.onresult; // placeholder, setup handles it
-                        // Better to refresh setup
-                        window.location.reload(); // Simple nuclear fix for hardware state
-                    }
+                    // SAVE & REFRESH: Ensures hardware state is totally cleared
+                    localStorage.setItem('minutes_live_transcript', fullTextRef.current);
+                    setTimeout(() => window.location.reload(), 200);
                 } else {
                     setError(null);
                     isRecRef.current = true;
@@ -267,8 +230,8 @@
                 
                 let activeKey = isCanvas ? "" : FALLBACK_KEY;
                 
-                // STABLE MODEL ROUTING (v2.12 Fix)
-                // Use gemini-1.5-flash for external hosting via the stable v1 endpoint
+                // STABLE API PATH REVERSION (v2.14)
+                // Use the standard production 'v1' endpoint for gemini-1.5-flash
                 const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash";
                 const apiVersion = isCanvas ? "v1beta" : "v1";
                 const displayTitle = (selectedPersona === 'CUSTOM' && customTitle) ? customTitle : personaObj.title;
@@ -342,16 +305,21 @@
 
             const handleClearTranscript = () => {
                 fullTextRef.current = '';
-                currentRunFinalRef.current = '';
                 setTranscript(''); 
                 setInterim('');
+                localStorage.removeItem('minutes_live_transcript');
+            };
+
+            const resetApp = () => {
+                localStorage.clear();
+                window.location.href = window.location.pathname + "?t=" + Date.now();
             };
 
             // VIEWS
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.12</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.14</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
@@ -394,7 +362,10 @@
                             </div>
                         )}
 
-                        <button onClick={saveDefaults} className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-100 active:scale-95 transition-all">Start Session</button>
+                        <div className="flex flex-col gap-3">
+                            <button onClick={saveDefaults} className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-100 active:scale-95 transition-all">Start Session</button>
+                            <button onClick={resetApp} className="w-full text-slate-400 font-black py-2 rounded-xl uppercase tracking-widest text-[8px] hover:text-red-500 transition-all">Nuclear Reset & Clear Cache</button>
+                        </div>
                     </div>
                 </div>
             );
@@ -425,7 +396,7 @@
                             <button onClick={toggleRecording} className={`w-32 h-32 rounded-full mx-auto flex items-center justify-center transition-all relative z-10 ${isRecording ? 'bg-indigo-600 shadow-2xl shadow-indigo-200 scale-105' : 'bg-slate-100'}`}>
                                 {isRecording ? <div className="w-8 h-8 bg-white rounded-lg" /> : <div className="w-8 h-8 bg-slate-300 rounded-full" />}
                             </button>
-                            <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="Topic..." className="mt-8 w-full text-center font-black uppercase text-sm border-b border-slate-100 pb-2 focus:border-indigo-500 outline-none relative z-10" />
+                            <input value={topic} onChange={e => {setTopic(e.target.value); localStorage.setItem('minutes_live_topic', e.target.value)}} placeholder="Topic..." className="mt-8 w-full text-center font-black uppercase text-sm border-b border-slate-100 pb-2 focus:border-indigo-500 outline-none relative z-10" />
                         </div>
 
                         <div className="flex-1 bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm overflow-hidden flex flex-col">
