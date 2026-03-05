@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.7</title>
+    <title>Minutes AI | Pro v2.8</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.7</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.8</p>
     </div>
 
     <script type="text/babel">
@@ -218,14 +218,18 @@
                 setError(null);
                 const personaObj = PERSONAS[selectedPersona];
                 
-                const isCanvas = typeof window.__app_id !== 'undefined';
+                // CRITICAL FIX FOR 404: Explicitly check for GitHub Pages environment
+                const isGitHub = window.location.hostname.includes('github.io');
+                const isCanvas = typeof window.__app_id !== 'undefined' && !isGitHub;
                 
-                // Active Key logic: Prefer User API Key, fallback to Canvas system key, or fallback to hardcoded key.
+                // Determine API Key
                 let activeKey = isCanvas ? "" : FALLBACK_KEY;
                 if (userApiKey && userApiKey.trim() !== "") {
                     activeKey = userApiKey.trim();
                 }
                 
+                // Determine Model: 'gemini-2.5-flash-preview-09-2025' throws a 404 outside of the Canvas.
+                // It MUST be 'gemini-1.5-flash' on GitHub.
                 const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash";
                 const displayTitle = (selectedPersona === 'CUSTOM' && customTitle) ? customTitle : personaObj.title;
 
@@ -254,8 +258,10 @@
                     });
                     
                     if (!res.ok) {
-                        const errBody = await res.json();
-                        throw new Error(`[HTTP ${res.status}] ${errBody.error?.message || 'Unknown Network Error'}`);
+                        const errText = await res.text();
+                        let errMsg = errText;
+                        try { errMsg = JSON.parse(errText).error.message; } catch(e) {}
+                        throw new Error(`[HTTP ${res.status}] using Model '${modelName}'. Message: ${errMsg}`);
                     }
 
                     const data = await res.json();
@@ -267,7 +273,8 @@
                     setView('analysis');
                 } catch (e) {
                     console.error("AI Analysis Failed:", e);
-                    setError(`Analysis Failed: ${e.message}.`);
+                    // Detailed error output so we can diagnose exactly what went wrong if it fails again
+                    setError(`Analysis Failed: ${e.message}`);
                 }
                 setIsLoading(false);
             };
@@ -307,7 +314,7 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.7</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.8</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
