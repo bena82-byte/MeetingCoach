@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.11</title>
+    <title>Minutes AI | Pro v2.12</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.11</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.12</p>
     </div>
 
     <script type="text/babel">
@@ -145,7 +145,8 @@
                         let finalStr = ''; 
                         let interimStr = '';
                         
-                        // RESTORED HIGH-PRECISION DEDUPLICATOR (Prevents Android duplication)
+                        // HIGH-PRECISION DEDUPLICATOR (Prevents Android duplication)
+                        // Logic: If chunk starts with previous text, it's an overwrite, not an append.
                         for (let i = 0; i < e.results.length; ++i) {
                             let chunk = e.results[i][0].transcript.trim();
                             if (!chunk) continue;
@@ -156,8 +157,6 @@
                                 
                                 if (cleanFinal && cleanChunk.startsWith(cleanFinal)) {
                                     finalStr = chunk + ' ';
-                                } else if (cleanFinal === cleanChunk) {
-                                    // Ignore duplicate
                                 } else {
                                     finalStr += chunk + ' ';
                                 }
@@ -167,8 +166,6 @@
                                 
                                 if (cleanInterim && cleanChunk.startsWith(cleanInterim)) {
                                     interimStr = chunk + ' ';
-                                } else if (cleanInterim === cleanChunk) {
-                                    // Ignore duplicate
                                 } else {
                                     interimStr += chunk + ' ';
                                 }
@@ -219,15 +216,32 @@
             const toggleRecording = () => {
                 if (isRecording) {
                     isRecRef.current = false;
-                    recognitionRef.current?.stop();
+                    if (recognitionRef.current) {
+                        recognitionRef.current.stop();
+                        // HARD SHUTDOWN: prevent any more processing
+                        recognitionRef.current.onresult = null;
+                        recognitionRef.current.onend = null;
+                    }
                     setIsRecording(false);
                     setVols(new Array(10).fill(2));
                     
-                    // Final text capture and reset
+                    // Final text capture
                     fullTextRef.current += currentRunFinalRef.current;
                     currentRunFinalRef.current = '';
                     setTranscript(fullTextRef.current);
                     setInterim('');
+                    
+                    // Re-init for next time
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    if (SpeechRecognition) {
+                        const rec = new SpeechRecognition();
+                        rec.continuous = true;
+                        rec.interimResults = true;
+                        rec.lang = 'en-US';
+                        rec.onresult = recognitionRef.current?.onresult; // placeholder, setup handles it
+                        // Better to refresh setup
+                        window.location.reload(); // Simple nuclear fix for hardware state
+                    }
                 } else {
                     setError(null);
                     isRecRef.current = true;
@@ -253,9 +267,10 @@
                 
                 let activeKey = isCanvas ? "" : FALLBACK_KEY;
                 
-                // STABLE MODEL IDENTIFIER FIX
-                // Note: v1beta endpoint with gemini-1.5-flash is the production standard for external tools
+                // STABLE MODEL ROUTING (v2.12 Fix)
+                // Use gemini-1.5-flash for external hosting via the stable v1 endpoint
                 const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash";
+                const apiVersion = isCanvas ? "v1beta" : "v1";
                 const displayTitle = (selectedPersona === 'CUSTOM' && customTitle) ? customTitle : personaObj.title;
 
                 const prompt = `Act as: ${displayTitle}. ${selectedPersona === 'CUSTOM' ? customPrompt : personaObj.prompt}
@@ -274,7 +289,7 @@
                 ${transcript}`;
 
                 try {
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
+                    const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelName}:generateContent?key=${activeKey}`;
                     
                     const res = await fetch(url, {
                         method: 'POST',
@@ -336,7 +351,7 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.11</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.12</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
