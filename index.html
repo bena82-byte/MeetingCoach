@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.9</title>
+    <title>Minutes AI | Pro v2.10</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.9</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.10</p>
     </div>
 
     <script type="text/babel">
@@ -124,7 +124,7 @@
             const recognitionRef = useRef(null);
             const isRecRef = useRef(false);
             const fullTextRef = useRef('');     
-            const currentRunFinalRef = useRef(''); // Holds finalized text of the *current* engine session
+            const currentRunFinalRef = useRef(''); 
 
             useEffect(() => {
                 const loader = document.getElementById('loader');
@@ -145,7 +145,7 @@
                         let finalStr = ''; 
                         let interimStr = '';
                         
-                        // SMART DEDUPLICATOR LOGIC (Restored from v1.4)
+                        // RESTORED HIGH-PRECISION DEDUPLICATOR (Fixed for Android repetition)
                         for (let i = 0; i < e.results.length; ++i) {
                             let chunk = e.results[i][0].transcript.trim();
                             if (!chunk) continue;
@@ -154,11 +154,10 @@
                                 let cleanFinal = finalStr.trim().toLowerCase();
                                 let cleanChunk = chunk.toLowerCase();
                                 
-                                // Android Fix: Overwrite if chunk contains full existing string
                                 if (cleanFinal && cleanChunk.startsWith(cleanFinal)) {
                                     finalStr = chunk + ' ';
                                 } else if (cleanFinal === cleanChunk) {
-                                    // Ignore exact duplicate
+                                    // Duplicate
                                 } else {
                                     finalStr += chunk + ' ';
                                 }
@@ -169,7 +168,7 @@
                                 if (cleanInterim && cleanChunk.startsWith(cleanInterim)) {
                                     interimStr = chunk + ' ';
                                 } else if (cleanInterim === cleanChunk) {
-                                    // Ignore exact duplicate
+                                    // Duplicate
                                 } else {
                                     interimStr += chunk + ' ';
                                 }
@@ -183,7 +182,6 @@
 
                     rec.onend = () => { 
                         if (isRecRef.current) { 
-                            // Lock in the session's final string permanently
                             fullTextRef.current += currentRunFinalRef.current;
                             currentRunFinalRef.current = '';
                             setTranscript(fullTextRef.current);
@@ -224,7 +222,8 @@
                     recognitionRef.current?.stop();
                     setIsRecording(false);
                     setVols(new Array(10).fill(2));
-                    // Final snapshot lock-in
+                    
+                    // Final text capture and reset
                     fullTextRef.current += currentRunFinalRef.current;
                     currentRunFinalRef.current = '';
                     setTranscript(fullTextRef.current);
@@ -249,11 +248,14 @@
                 setError(null);
                 const personaObj = PERSONAS[selectedPersona];
                 
+                // ENVIRONMENT CHECK & MODEL ROUTING FIX
                 const isGitHub = window.location.hostname.includes('github.io');
                 const isCanvas = typeof window.__app_id !== 'undefined' && !isGitHub;
                 
                 let activeKey = isCanvas ? "" : FALLBACK_KEY;
-                const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash";
+                
+                // Reverted model identifier logic to ensure GitHub compatibility
+                const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash-latest";
                 const displayTitle = (selectedPersona === 'CUSTOM' && customTitle) ? customTitle : personaObj.title;
 
                 const prompt = `Act as: ${displayTitle}. ${selectedPersona === 'CUSTOM' ? customPrompt : personaObj.prompt}
@@ -272,6 +274,7 @@
                 ${transcript}`;
 
                 try {
+                    // Standardized endpoint for v1beta compatibility
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
                     
                     const res = await fetch(url, {
@@ -334,7 +337,7 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.9</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.10</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
