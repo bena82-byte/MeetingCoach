@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.15</title>
+    <title>Minutes AI | Pro v2.17</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.15</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.17</p>
     </div>
 
     <script type="text/babel">
@@ -123,7 +123,9 @@
 
             const recognitionRef = useRef(null);
             const isRecRef = useRef(false);
-            const fullTextRef = useRef(localStorage.getItem('minutes_live_transcript') || '');     
+            
+            // CORE FIX: Use a map to track finalized results by index to prevent repetition
+            const resultsMap = useRef(new Map()); 
 
             useEffect(() => {
                 const loader = document.getElementById('loader');
@@ -142,21 +144,25 @@
                         if (!isRecRef.current) return;
                         
                         let interimStr = '';
-                        // HIGH-PRECISION REPETITION FIX
-                        // Uses resultIndex to process only NEW finalized segments
-                        for (let i = e.resultIndex; i < e.results.length; ++i) {
+                        
+                        // PRECISION TRANSCRIPTION ENGINE
+                        for (let i = 0; i < e.results.length; ++i) {
                             const result = e.results[i];
-                            const chunk = result[0].transcript;
+                            const text = result[0].transcript.trim();
+                            
                             if (result.isFinal) {
-                                fullTextRef.current += chunk + ' ';
-                                localStorage.setItem('minutes_live_transcript', fullTextRef.current);
+                                // Map prevents duplicates from the same index
+                                resultsMap.current.set(i, text);
                             } else {
-                                interimStr += chunk;
+                                interimStr += text + ' ';
                             }
                         }
                         
+                        // Construct transcript from the map of confirmed results
+                        const finalTranscript = Array.from(resultsMap.current.values()).join(' ');
+                        setTranscript(finalTranscript);
                         setInterim(interimStr);
-                        setTranscript(fullTextRef.current);
+                        localStorage.setItem('minutes_live_transcript', finalTranscript);
                     };
 
                     rec.onend = () => { 
@@ -201,9 +207,6 @@
                     setIsRecording(false);
                     setVols(new Array(10).fill(2));
                     setInterim('');
-                    
-                    // SAVE: Ensures current state is stored without reloading the page
-                    localStorage.setItem('minutes_live_transcript', fullTextRef.current);
                 } else {
                     setError(null);
                     isRecRef.current = true;
@@ -222,17 +225,10 @@
             const runAnalysis = async () => {
                 setIsLoading(true);
                 setError(null);
-                const personaObj = PERSONAS[selectedPersona];
                 
-                // ENVIRONMENT CHECK: Strictly determine path based on host
                 const isExternal = window.location.hostname.includes('github.io') || !window.__app_id;
-                
-                let activeKey = isExternal ? FALLBACK_KEY : "";
-                
-                // STABLE API PATH SELECTION
-                // Gemini-1.5-flash is production standard on v1. Preview uses v1beta.
-                const modelName = isExternal ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
-                const apiVersion = isExternal ? "v1" : "v1beta";
+                const activeKey = isExternal ? FALLBACK_KEY : "";
+                const personaObj = PERSONAS[selectedPersona];
                 const displayTitle = (selectedPersona === 'CUSTOM' && customTitle) ? customTitle : personaObj.title;
 
                 const prompt = `Act as: ${displayTitle}. ${selectedPersona === 'CUSTOM' ? customPrompt : personaObj.prompt}
@@ -250,31 +246,52 @@
                 TRANSCRIPT:
                 ${transcript}`;
 
-                try {
-                    const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelName}:generateContent?key=${activeKey}`;
-                    
-                    const res = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-                    });
-                    
-                    if (!res.ok) {
-                        const errText = await res.text();
-                        let errMsg = errText;
-                        try { errMsg = JSON.parse(errText).error.message; } catch(e) {}
-                        throw new Error(`[HTTP ${res.status}] ${errMsg}`);
-                    }
+                // DISCOVERY LOOP: Instead of guessing the model, we try them in sequence
+                const modelsToTry = isExternal 
+                    ? ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"] 
+                    : ["gemini-2.5-flash-preview-09-2025"];
 
-                    const data = await res.json();
-                    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!raw) throw new Error("No textual response from AI.");
-                    
-                    const clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    setAnalysis(JSON.parse(clean));
-                    setView('analysis');
-                } catch (e) {
-                    setError(`Analysis Failed: ${e.message}`);
+                let success = false;
+                let lastErrorMessage = "";
+
+                for (const model of modelsToTry) {
+                    if (success) break;
+
+                    try {
+                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
+                        
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                        });
+                        
+                        if (res.status === 404) {
+                            // Silently try next model in discovery loop
+                            continue;
+                        }
+
+                        if (!res.ok) {
+                            const errText = await res.text();
+                            throw new Error(errText);
+                        }
+
+                        const data = await res.json();
+                        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (!raw) throw new Error("No textual response from AI.");
+                        
+                        const clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+                        setAnalysis(JSON.parse(clean));
+                        setView('analysis');
+                        success = true;
+                    } catch (e) {
+                        lastErrorMessage = e.message;
+                        console.warn(`Model ${model} failed, trying next...`);
+                    }
+                }
+
+                if (!success) {
+                    setError(`Analysis Failed after trying all available models. Latest error: ${lastErrorMessage}`);
                 }
                 setIsLoading(false);
             };
@@ -303,7 +320,7 @@
             };
 
             const handleClearTranscript = () => {
-                fullTextRef.current = '';
+                resultsMap.current.clear();
                 setTranscript(''); 
                 setInterim('');
                 localStorage.removeItem('minutes_live_transcript');
@@ -318,7 +335,7 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.15</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.17</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
