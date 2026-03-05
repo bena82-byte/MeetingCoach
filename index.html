@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.17</title>
+    <title>Minutes AI | Pro v2.18</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.17</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.18</p>
     </div>
 
     <script type="text/babel">
@@ -124,8 +124,8 @@
             const recognitionRef = useRef(null);
             const isRecRef = useRef(false);
             
-            // CORE FIX: Use a map to track finalized results by index to prevent repetition
-            const resultsMap = useRef(new Map()); 
+            // TRANSCRIPTION ENGINE: Uses a ref to store finalized text to avoid React closure staleness
+            const fullTranscriptRef = useRef(localStorage.getItem('minutes_live_transcript') || '');
 
             useEffect(() => {
                 const loader = document.getElementById('loader');
@@ -145,24 +145,23 @@
                         
                         let interimStr = '';
                         
-                        // PRECISION TRANSCRIPTION ENGINE
-                        for (let i = 0; i < e.results.length; ++i) {
+                        // PRECISION DEDUPLICATION LOGIC
+                        // Only process new results starting from the engine's last resultIndex.
+                        // This prevents Android browsers from repeating previously said words.
+                        for (let i = e.resultIndex; i < e.results.length; ++i) {
                             const result = e.results[i];
-                            const text = result[0].transcript.trim();
+                            const text = result[0].transcript;
                             
                             if (result.isFinal) {
-                                // Map prevents duplicates from the same index
-                                resultsMap.current.set(i, text);
+                                fullTranscriptRef.current += text.trim() + ' ';
+                                localStorage.setItem('minutes_live_transcript', fullTranscriptRef.current);
                             } else {
-                                interimStr += text + ' ';
+                                interimStr += text;
                             }
                         }
                         
-                        // Construct transcript from the map of confirmed results
-                        const finalTranscript = Array.from(resultsMap.current.values()).join(' ');
-                        setTranscript(finalTranscript);
                         setInterim(interimStr);
-                        localStorage.setItem('minutes_live_transcript', finalTranscript);
+                        setTranscript(fullTranscriptRef.current);
                     };
 
                     rec.onend = () => { 
@@ -207,6 +206,7 @@
                     setIsRecording(false);
                     setVols(new Array(10).fill(2));
                     setInterim('');
+                    localStorage.setItem('minutes_live_transcript', fullTranscriptRef.current);
                 } else {
                     setError(null);
                     isRecRef.current = true;
@@ -246,19 +246,29 @@
                 TRANSCRIPT:
                 ${transcript}`;
 
-                // DISCOVERY LOOP: Instead of guessing the model, we try them in sequence
-                const modelsToTry = isExternal 
-                    ? ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"] 
-                    : ["gemini-2.5-flash-preview-09-2025"];
+                // ROLLING MODEL DISCOVERY ENGINE (The "Nuclear" 404 Fix)
+                // We attempt multiple model strings and API versions to find a working pair
+                const strategies = [
+                    { version: "v1beta", model: "gemini-1.5-flash" },
+                    { version: "v1", model: "gemini-1.5-flash" },
+                    { version: "v1beta", model: "gemini-1.5-flash-latest" },
+                    { version: "v1beta", model: "gemini-1.5-flash-8b" },
+                    { version: "v1beta", model: "gemini-pro" }
+                ];
+
+                // If inside the internal Canvas environment, prioritize the internal preview model
+                if (!isExternal) {
+                    strategies.unshift({ version: "v1beta", model: "gemini-2.5-flash-preview-09-2025" });
+                }
 
                 let success = false;
-                let lastErrorMessage = "";
+                let lastError = "";
 
-                for (const model of modelsToTry) {
+                for (const strategy of strategies) {
                     if (success) break;
 
                     try {
-                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
+                        const url = `https://generativelanguage.googleapis.com/${strategy.version}/models/${strategy.model}:generateContent?key=${activeKey}`;
                         
                         const res = await fetch(url, {
                             method: 'POST',
@@ -267,31 +277,31 @@
                         });
                         
                         if (res.status === 404) {
-                            // Silently try next model in discovery loop
+                            console.warn(`Discovery: Model ${strategy.model} on ${strategy.version} not found (404). Trying next...`);
                             continue;
                         }
 
                         if (!res.ok) {
-                            const errText = await res.text();
-                            throw new Error(errText);
+                            const errData = await res.json();
+                            throw new Error(errData.error?.message || `HTTP ${res.status}`);
                         }
 
                         const data = await res.json();
                         const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (!raw) throw new Error("No textual response from AI.");
+                        if (!raw) throw new Error("Empty AI response.");
                         
                         const clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
                         setAnalysis(JSON.parse(clean));
                         setView('analysis');
                         success = true;
                     } catch (e) {
-                        lastErrorMessage = e.message;
-                        console.warn(`Model ${model} failed, trying next...`);
+                        lastError = e.message;
+                        console.error(`Discovery Error (${strategy.model}):`, e);
                     }
                 }
 
                 if (!success) {
-                    setError(`Analysis Failed after trying all available models. Latest error: ${lastErrorMessage}`);
+                    setError(`Connection Error: Exhausted all available models. Latest issue: ${lastError}`);
                 }
                 setIsLoading(false);
             };
@@ -320,7 +330,7 @@
             };
 
             const handleClearTranscript = () => {
-                resultsMap.current.clear();
+                fullTranscriptRef.current = '';
                 setTranscript(''); 
                 setInterim('');
                 localStorage.removeItem('minutes_live_transcript');
@@ -335,7 +345,7 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.17</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.18</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
