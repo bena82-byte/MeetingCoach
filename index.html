@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.8</title>
+    <title>Minutes AI | Pro v2.9</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.8</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.9</p>
     </div>
 
     <script type="text/babel">
@@ -109,7 +109,6 @@
             const [customPrompt, setCustomPrompt] = useState(localStorage.getItem('minutes_custom_prompt') || '');
             const [targetEmail, setTargetEmail] = useState(localStorage.getItem('minutes_email') || '');
             const [senderEmail, setSenderEmail] = useState(localStorage.getItem('minutes_sender_email') || '');
-            const [userApiKey, setUserApiKey] = useState(localStorage.getItem('minutes_api_key') || '');
             
             const [transcript, setTranscript] = useState('');
             const [interim, setInterim] = useState('');
@@ -125,7 +124,7 @@
             const recognitionRef = useRef(null);
             const isRecRef = useRef(false);
             const fullTextRef = useRef('');     
-            const transcriptRef = useRef('');   
+            const currentRunFinalRef = useRef(''); // Holds finalized text of the *current* engine session
 
             useEffect(() => {
                 const loader = document.getElementById('loader');
@@ -142,48 +141,76 @@
 
                     rec.onresult = (e) => {
                         if (!isRecRef.current) return;
-                        let finalStr = '', interimStr = '';
-                        for (let i = 0; i < e.results.length; i++) {
-                            if (e.results[i].isFinal) finalStr += e.results[i][0].transcript + ' ';
-                            else interimStr += e.results[i][0].transcript + ' ';
+                        
+                        let finalStr = ''; 
+                        let interimStr = '';
+                        
+                        // SMART DEDUPLICATOR LOGIC (Restored from v1.4)
+                        for (let i = 0; i < e.results.length; ++i) {
+                            let chunk = e.results[i][0].transcript.trim();
+                            if (!chunk) continue;
+                            
+                            if (e.results[i].isFinal) {
+                                let cleanFinal = finalStr.trim().toLowerCase();
+                                let cleanChunk = chunk.toLowerCase();
+                                
+                                // Android Fix: Overwrite if chunk contains full existing string
+                                if (cleanFinal && cleanChunk.startsWith(cleanFinal)) {
+                                    finalStr = chunk + ' ';
+                                } else if (cleanFinal === cleanChunk) {
+                                    // Ignore exact duplicate
+                                } else {
+                                    finalStr += chunk + ' ';
+                                }
+                            } else {
+                                let cleanInterim = interimStr.trim().toLowerCase();
+                                let cleanChunk = chunk.toLowerCase();
+                                
+                                if (cleanInterim && cleanChunk.startsWith(cleanInterim)) {
+                                    interimStr = chunk + ' ';
+                                } else if (cleanInterim === cleanChunk) {
+                                    // Ignore exact duplicate
+                                } else {
+                                    interimStr += chunk + ' ';
+                                }
+                            }
                         }
                         
+                        currentRunFinalRef.current = finalStr;
                         setInterim(interimStr);
-                        transcriptRef.current = fullTextRef.current + finalStr;
-                        setTranscript(transcriptRef.current);
+                        setTranscript(fullTextRef.current + finalStr);
                     };
 
                     rec.onend = () => { 
                         if (isRecRef.current) { 
-                            fullTextRef.current = transcriptRef.current; 
-                            try { rec.start(); } catch(err) { console.error("Mic restart failed:", err); } 
+                            // Lock in the session's final string permanently
+                            fullTextRef.current += currentRunFinalRef.current;
+                            currentRunFinalRef.current = '';
+                            setTranscript(fullTextRef.current);
+                            try { rec.start(); } catch(err) {} 
                         } 
                     };
 
                     rec.onerror = (e) => {
-                        console.error("Speech Recognition Error:", e.error);
                         if (e.error === 'not-allowed') {
                             isRecRef.current = false;
                             setIsRecording(false);
-                            setError("Microphone permission denied. Please allow mic access in your browser settings.");
+                            setError("Microphone permission denied.");
                         }
                     };
 
                     recognitionRef.current = rec;
                 } else {
-                    setError("Speech recognition is not supported in this browser. Please use Chrome or Safari.");
+                    setError("Speech recognition is not supported in this browser.");
                 }
 
-                return () => {
-                    if (recognitionRef.current) recognitionRef.current.stop();
-                };
+                return () => { if (recognitionRef.current) recognitionRef.current.stop(); };
             }, []);
 
             const saveDefaults = () => {
                 localStorage.setItem('minutes_persona', selectedPersona);
                 localStorage.setItem('minutes_email', targetEmail);
                 localStorage.setItem('minutes_sender_email', senderEmail);
-                localStorage.setItem('minutes_api_key', userApiKey);
                 if (selectedPersona === 'CUSTOM') {
                     localStorage.setItem('minutes_custom_title', customTitle);
                     localStorage.setItem('minutes_custom_prompt', customPrompt);
@@ -197,6 +224,10 @@
                     recognitionRef.current?.stop();
                     setIsRecording(false);
                     setVols(new Array(10).fill(2));
+                    // Final snapshot lock-in
+                    fullTextRef.current += currentRunFinalRef.current;
+                    currentRunFinalRef.current = '';
+                    setTranscript(fullTextRef.current);
                     setInterim('');
                 } else {
                     setError(null);
@@ -218,18 +249,10 @@
                 setError(null);
                 const personaObj = PERSONAS[selectedPersona];
                 
-                // CRITICAL FIX FOR 404: Explicitly check for GitHub Pages environment
                 const isGitHub = window.location.hostname.includes('github.io');
                 const isCanvas = typeof window.__app_id !== 'undefined' && !isGitHub;
                 
-                // Determine API Key
                 let activeKey = isCanvas ? "" : FALLBACK_KEY;
-                if (userApiKey && userApiKey.trim() !== "") {
-                    activeKey = userApiKey.trim();
-                }
-                
-                // Determine Model: 'gemini-2.5-flash-preview-09-2025' throws a 404 outside of the Canvas.
-                // It MUST be 'gemini-1.5-flash' on GitHub.
                 const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash";
                 const displayTitle = (selectedPersona === 'CUSTOM' && customTitle) ? customTitle : personaObj.title;
 
@@ -261,7 +284,7 @@
                         const errText = await res.text();
                         let errMsg = errText;
                         try { errMsg = JSON.parse(errText).error.message; } catch(e) {}
-                        throw new Error(`[HTTP ${res.status}] using Model '${modelName}'. Message: ${errMsg}`);
+                        throw new Error(`[HTTP ${res.status}] ${errMsg}`);
                     }
 
                     const data = await res.json();
@@ -272,8 +295,6 @@
                     setAnalysis(JSON.parse(clean));
                     setView('analysis');
                 } catch (e) {
-                    console.error("AI Analysis Failed:", e);
-                    // Detailed error output so we can diagnose exactly what went wrong if it fails again
                     setError(`Analysis Failed: ${e.message}`);
                 }
                 setIsLoading(false);
@@ -291,12 +312,10 @@
                         from_email: senderEmail,
                         transcript: transcript
                     };
-
                     await emailjs.send(CONFIG.EMAILJS_SERVICE, CONFIG.EMAILJS_TEMPLATE, templateParams);
                     setEmailStatus('sent');
                     setTimeout(() => setEmailStatus('idle'), 3000);
                 } catch (err) {
-                    console.error("Email Error:", err);
                     setEmailStatus('error');
                     setTimeout(() => setEmailStatus('idle'), 3000);
                     const mailto = `mailto:${targetEmail}?subject=${encodeURIComponent(topic || 'Meeting Summary')}&body=${encodeURIComponent(JSON.stringify(analysis, null, 2))}`;
@@ -305,16 +324,17 @@
             };
 
             const handleClearTranscript = () => {
-                setTranscript(''); 
-                transcriptRef.current = '';
                 fullTextRef.current = '';
+                currentRunFinalRef.current = '';
+                setTranscript(''); 
+                setInterim('');
             };
 
             // VIEWS
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.8</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.9</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
@@ -356,11 +376,6 @@
                                 <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)} placeholder="What should the AI look for?" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-medium h-24 outline-none" />
                             </div>
                         )}
-
-                        <div className="pt-4 border-t border-slate-100">
-                            <label className="text-[10px] font-black uppercase text-slate-400 block mb-3">Advanced: Your Gemini API Key (Optional)</label>
-                            <input type="password" value={userApiKey} onChange={e => setUserApiKey(e.target.value)} placeholder="Paste custom key to prevent 404 errors" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold focus:border-indigo-500 outline-none" />
-                        </div>
 
                         <button onClick={saveDefaults} className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-100 active:scale-95 transition-all">Start Session</button>
                     </div>
