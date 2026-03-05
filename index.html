@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.14</title>
+    <title>Minutes AI | Pro v2.15</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.14</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.15</p>
     </div>
 
     <script type="text/babel">
@@ -142,8 +142,8 @@
                         if (!isRecRef.current) return;
                         
                         let interimStr = '';
-                        // HIGH-PRECISION REPETITION FIX (From MeetingCoach)
-                        // This logic only processes NEW finalized chunks starting at resultIndex
+                        // HIGH-PRECISION REPETITION FIX
+                        // Uses resultIndex to process only NEW finalized segments
                         for (let i = e.resultIndex; i < e.results.length; ++i) {
                             const result = e.results[i];
                             const chunk = result[0].transcript;
@@ -202,9 +202,8 @@
                     setVols(new Array(10).fill(2));
                     setInterim('');
                     
-                    // SAVE & REFRESH: Ensures hardware state is totally cleared
+                    // SAVE: Ensures current state is stored without reloading the page
                     localStorage.setItem('minutes_live_transcript', fullTextRef.current);
-                    setTimeout(() => window.location.reload(), 200);
                 } else {
                     setError(null);
                     isRecRef.current = true;
@@ -225,15 +224,15 @@
                 setError(null);
                 const personaObj = PERSONAS[selectedPersona];
                 
-                const isGitHub = window.location.hostname.includes('github.io');
-                const isCanvas = typeof window.__app_id !== 'undefined' && !isGitHub;
+                // ENVIRONMENT CHECK: Strictly determine path based on host
+                const isExternal = window.location.hostname.includes('github.io') || !window.__app_id;
                 
-                let activeKey = isCanvas ? "" : FALLBACK_KEY;
+                let activeKey = isExternal ? FALLBACK_KEY : "";
                 
-                // STABLE API PATH REVERSION (v2.14)
-                // Use the standard production 'v1' endpoint for gemini-1.5-flash
-                const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash";
-                const apiVersion = isCanvas ? "v1beta" : "v1";
+                // STABLE API PATH SELECTION
+                // Gemini-1.5-flash is production standard on v1. Preview uses v1beta.
+                const modelName = isExternal ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
+                const apiVersion = isExternal ? "v1" : "v1beta";
                 const displayTitle = (selectedPersona === 'CUSTOM' && customTitle) ? customTitle : personaObj.title;
 
                 const prompt = `Act as: ${displayTitle}. ${selectedPersona === 'CUSTOM' ? customPrompt : personaObj.prompt}
@@ -319,7 +318,7 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.14</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.15</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
