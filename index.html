@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.2</title>
+    <title>Minutes AI | Pro v2.3</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -27,7 +27,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.2</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.3</p>
     </div>
 
     <script type="text/babel">
@@ -222,7 +222,6 @@
                 if (!analysis) return;
                 setEmailStatus('sending');
                 try {
-                    // Mapping data for EmailJS template
                     const templateParams = {
                         "Discussion Topic": topic || "Meeting Summary",
                         summary: JSON.stringify(analysis.chapters, null, 2),
@@ -239,7 +238,6 @@
                     console.error("Email Error:", err);
                     setEmailStatus('error');
                     setTimeout(() => setEmailStatus('idle'), 3000);
-                    // Fallback to mailto if EmailJS fails
                     const mailto = `mailto:${targetEmail}?subject=${encodeURIComponent(topic || 'Meeting Summary')}&body=${encodeURIComponent(JSON.stringify(analysis, null, 2))}`;
                     window.location.href = mailto;
                 }
@@ -249,16 +247,25 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.2</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.3</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-3">Sender Email</label>
+                                <div className="flex justify-between items-end mb-3">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block leading-none">From</label>
+                                    <button onClick={() => setSenderEmail('')} className="text-[8px] font-black uppercase text-indigo-500 leading-none">Clear</button>
+                                </div>
                                 <input type="email" value={senderEmail} onChange={e => setSenderEmail(e.target.value)} placeholder="Your email" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold focus:border-indigo-500 outline-none" />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-3">Target Email</label>
+                                <div className="flex justify-between items-end mb-3">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 block leading-none">To</label>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setTargetEmail(senderEmail)} className="text-[8px] font-black uppercase text-indigo-500 leading-none">Same</button>
+                                        <button onClick={() => setTargetEmail('')} className="text-[8px] font-black uppercase text-indigo-500 leading-none">Clear</button>
+                                    </div>
+                                </div>
                                 <input type="email" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} placeholder="Recipient email" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold focus:border-indigo-500 outline-none" />
                             </div>
                         </div>
