@@ -195,6 +195,15 @@
                     setInterimTranscript(interimStr);
                 };
 
+                rec.onerror = (e) => {
+                    console.warn("Speech recognition error:", e.error);
+                    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+                        forceHardwareShutdown();
+                        setIsRecording(false);
+                        setError("Microphone permission denied by browser.");
+                    }
+                };
+
                 rec.onend = () => {
                     // Commit map to baseline and clear map for the next restart
                     const sessionFinals = Array.from(sessionMapRef.current.values()).join(' ');
@@ -268,6 +277,21 @@
                     setupSpeechEngine(); 
                 } else {
                     setError(null);
+                    
+                    // 1. Set recording state immediately to capture events
+                    isRecordingRef.current = true;
+                    setIsRecording(true);
+
+                    // 2. Start Speech Recognition SYNCHRONOUSLY
+                    // This is critical for iOS Safari and Android Chrome to register the user gesture
+                    // and grab the primary audio lock before the visualizer stream opens.
+                    try {
+                        if (recognitionRef.current) recognitionRef.current.start();
+                    } catch (e) {
+                        console.warn("Speech engine warning:", e);
+                    }
+
+                    // 3. Start Visualizer ASYNCHRONOUSLY
                     try {
                         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                         streamRef.current = stream;
@@ -275,8 +299,7 @@
                         const analyzer = audioCtxRef.current.createAnalyser();
                         audioCtxRef.current.createMediaStreamSource(stream).connect(analyzer);
                         const data = new Uint8Array(analyzer.frequencyBinCount);
-                        isRecordingRef.current = true;
-                        setIsRecording(true);
+                        
                         const draw = () => {
                             if (isRecordingRef.current && stream.active) {
                                 analyzer.getByteFrequencyData(data);
@@ -287,9 +310,9 @@
                             }
                         };
                         draw();
-                        recognitionRef.current?.start();
                     } catch (e) {
-                        setError("Microphone error. Check Surface browser permissions.");
+                        console.warn("Visualizer mic error. Transcribing may still work.", e);
+                        // Do not block recording here if only the visualizer fails
                     }
                 }
             };
