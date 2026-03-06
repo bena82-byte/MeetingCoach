@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.23</title>
+    <title>Minutes AI | Pro v2.24</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.23</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.24</p>
     </div>
 
     <script type="text/babel">
@@ -248,9 +248,8 @@
                     const isCanvas = typeof window.__app_id !== 'undefined' && !window.location.hostname.includes('github.io');
                     const activeKey = isCanvas ? "" : FALLBACK_KEY; 
                     
-                    // For external hosting, use 'gemini-pro' as it is the universally accepted model for the fallback key.
-                    // The newer 'flash' models will throw 404 errors on this key.
-                    const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-pro";
+                    // FIXED: Replaced deprecated "gemini-pro" alias with the official "gemini-1.0-pro"
+                    const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.0-pro";
                     
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
                     
@@ -319,7 +318,7 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.23</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.24</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
