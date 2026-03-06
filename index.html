@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.18</title>
+    <title>Minutes AI | Pro v2.19</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.18</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.19</p>
     </div>
 
     <script type="text/babel">
@@ -99,8 +99,6 @@
                 prompt: "Use the user's custom instructions."
             }
         };
-
-        const FALLBACK_KEY = String.fromCharCode(...[65, 73, 122, 97, 83, 121, 65, 65, 108, 122, 76, 97, 100, 73, 83, 70, 106, 45, 48, 117, 49, 69, 54, 103, 104, 105, 77, 82, 54, 99, 84, 55, 117, 101, 79, 95, 95, 120, 89]);
 
         function App() {
             const [view, setView] = useState('config'); 
@@ -226,8 +224,6 @@
                 setIsLoading(true);
                 setError(null);
                 
-                const isExternal = window.location.hostname.includes('github.io') || !window.__app_id;
-                const activeKey = isExternal ? FALLBACK_KEY : "";
                 const personaObj = PERSONAS[selectedPersona];
                 const displayTitle = (selectedPersona === 'CUSTOM' && customTitle) ? customTitle : personaObj.title;
 
@@ -246,62 +242,34 @@
                 TRANSCRIPT:
                 ${transcript}`;
 
-                // ROLLING MODEL DISCOVERY ENGINE (The "Nuclear" 404 Fix)
-                // We attempt multiple model strings and API versions to find a working pair
-                const strategies = [
-                    { version: "v1beta", model: "gemini-1.5-flash" },
-                    { version: "v1", model: "gemini-1.5-flash" },
-                    { version: "v1beta", model: "gemini-1.5-flash-latest" },
-                    { version: "v1beta", model: "gemini-1.5-flash-8b" },
-                    { version: "v1beta", model: "gemini-pro" }
-                ];
-
-                // If inside the internal Canvas environment, prioritize the internal preview model
-                if (!isExternal) {
-                    strategies.unshift({ version: "v1beta", model: "gemini-2.5-flash-preview-09-2025" });
-                }
-
-                let success = false;
-                let lastError = "";
-
-                for (const strategy of strategies) {
-                    if (success) break;
-
-                    try {
-                        const url = `https://generativelanguage.googleapis.com/${strategy.version}/models/${strategy.model}:generateContent?key=${activeKey}`;
-                        
-                        const res = await fetch(url, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-                        });
-                        
-                        if (res.status === 404) {
-                            console.warn(`Discovery: Model ${strategy.model} on ${strategy.version} not found (404). Trying next...`);
-                            continue;
-                        }
-
-                        if (!res.ok) {
-                            const errData = await res.json();
-                            throw new Error(errData.error?.message || `HTTP ${res.status}`);
-                        }
-
-                        const data = await res.json();
-                        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (!raw) throw new Error("Empty AI response.");
-                        
-                        const clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-                        setAnalysis(JSON.parse(clean));
-                        setView('analysis');
-                        success = true;
-                    } catch (e) {
-                        lastError = e.message;
-                        console.error(`Discovery Error (${strategy.model}):`, e);
+                try {
+                    // Reverted back to the original, reliable Canvas configuration
+                    const activeKey = ""; 
+                    const modelName = "gemini-2.5-flash-preview-09-2025";
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
+                    
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    
+                    if (!res.ok) {
+                        const errText = await res.text();
+                        let errMsg = errText;
+                        try { errMsg = JSON.parse(errText).error.message; } catch(e) {}
+                        throw new Error(`[HTTP ${res.status}] ${errMsg}`);
                     }
-                }
 
-                if (!success) {
-                    setError(`Connection Error: Exhausted all available models. Latest issue: ${lastError}`);
+                    const data = await res.json();
+                    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!raw) throw new Error("Empty AI response.");
+                    
+                    const clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    setAnalysis(JSON.parse(clean));
+                    setView('analysis');
+                } catch (e) {
+                    setError(`Analysis Failed: ${e.message}`);
                 }
                 setIsLoading(false);
             };
@@ -345,7 +313,7 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.18</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.19</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
