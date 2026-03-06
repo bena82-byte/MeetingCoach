@@ -70,6 +70,11 @@
                 schema: { "discovery": "Pain points uncovered", "objections": "Handled vs Unhandled", "next_steps": "Close plan" },
                 prompt: "Focus on deal velocity, client pain, and closing signals."
             },
+            SENIOR_LIVING: {
+                title: "Senior Living Expert",
+                schema: { "care_needs": "Assisted Living/Memory Care needs", "family_dynamics": "Decision makers & guilt/objections", "apfm_context": "A Place for Mom lead details & timing" },
+                prompt: "You have specific expertise in senior living sales and marketing, community relations directors, senior living operators, and the largest lead generator, A Place for Mom."
+            },
             SAM: {
                 title: "Senior Account Manager",
                 schema: { "retention_risk": "Risk level 1-10", "expansion": "Upsell opportunities", "relationship": "Sentiment analysis" },
@@ -143,8 +148,7 @@
             const [toast, setToast] = useState(null);
 
             const recognitionRef = useRef(null);
-            const streamRef = useRef(null);
-            const audioCtxRef = useRef(null);
+            const animationTimerRef = useRef(null);
             const isRecordingRef = useRef(false);
             
             // Baseline text from previous recording chunks (solves continuous restart bug)
@@ -219,22 +223,25 @@
                 recognitionRef.current = rec;
             };
 
+            const animateAudio = () => {
+                if (!isRecordingRef.current) return;
+                // Simulated bouncing effect that bypasses the hardware lock issue on mobile
+                setVols(Array.from({length: 12}, () => Math.random() * 60 + 10));
+                animationTimerRef.current = setTimeout(animateAudio, 100);
+            };
+
             const forceHardwareShutdown = () => {
                 isRecordingRef.current = false;
+                clearTimeout(animationTimerRef.current);
+                setVols(new Array(12).fill(0));
+                
                 if (recognitionRef.current) {
                     recognitionRef.current.onresult = null;
                     recognitionRef.current.onend = null;
                     try { recognitionRef.current.stop(); } catch(e) {} 
                 }
-                if (streamRef.current) {
-                    streamRef.current.getTracks().forEach(t => t.stop());
-                }
-                if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-                    audioCtxRef.current.close();
-                }
             };
 
-            // MOVED EFFECT DOWN HERE: So it knows about setupSpeechEngine and forceHardwareShutdown
             useEffect(() => {
                 const loader = document.getElementById('loader');
                 if (loader) {
@@ -259,7 +266,7 @@
                 setView('input');
             };
 
-            const toggleRec = async () => {
+            const toggleRec = () => {
                 if (isRecording) {
                     const finalSnap = (transcriptRef.current + interimTranscript).trim();
                     transcriptRef.current = finalSnap;
@@ -272,7 +279,6 @@
                     forceHardwareShutdown();
                     setIsRecording(false);
                     setInterimTranscript('');
-                    setVols(new Array(12).fill(0));
                     showToast("Transcript Secured");
                     setupSpeechEngine(); 
                 } else {
@@ -284,36 +290,15 @@
 
                     // 2. Start Speech Recognition SYNCHRONOUSLY
                     // This is critical for iOS Safari and Android Chrome to register the user gesture
-                    // and grab the primary audio lock before the visualizer stream opens.
+                    // without interference from the getUserMedia hardware lock.
                     try {
                         if (recognitionRef.current) recognitionRef.current.start();
                     } catch (e) {
                         console.warn("Speech engine warning:", e);
                     }
 
-                    // 3. Start Visualizer ASYNCHRONOUSLY
-                    try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                        streamRef.current = stream;
-                        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-                        const analyzer = audioCtxRef.current.createAnalyser();
-                        audioCtxRef.current.createMediaStreamSource(stream).connect(analyzer);
-                        const data = new Uint8Array(analyzer.frequencyBinCount);
-                        
-                        const draw = () => {
-                            if (isRecordingRef.current && stream.active) {
-                                analyzer.getByteFrequencyData(data);
-                                setVols(Array.from(data.slice(0, 12)).map(v => (v / 180) * 100));
-                                requestAnimationFrame(draw);
-                            } else {
-                                setVols(new Array(12).fill(0));
-                            }
-                        };
-                        draw();
-                    } catch (e) {
-                        console.warn("Visualizer mic error. Transcribing may still work.", e);
-                        // Do not block recording here if only the visualizer fails
-                    }
+                    // 3. Start simulated visualizer
+                    animateAudio();
                 }
             };
 
@@ -486,7 +471,7 @@ ${text}`;
                                         <span className="ml-2 text-[11px] px-2 py-0.5 bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded -skew-x-12 shadow-sm tracking-widest">PRO</span>
                                     </h1>
                                 </div>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Master Build <span className="text-indigo-500">v2.33</span></p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Master Build <span className="text-indigo-500">v2.34</span></p>
                             </div>
                             
                             <div className="space-y-6">
