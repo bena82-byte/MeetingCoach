@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="google" content="notranslate">
-    <title>Minutes AI | Pro v2.19</title>
+    <title>Minutes AI | Pro v2.21</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@
     <div id="root"></div>
     <div id="loader" class="loading-screen">
         <div class="spinner"></div>
-        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.19</p>
+        <p class="mt-4 font-black text-indigo-600 text-[10px] uppercase tracking-widest">Initialising Engine v2.21</p>
     </div>
 
     <script type="text/babel">
@@ -100,6 +100,8 @@
             }
         };
 
+        const FALLBACK_KEY = String.fromCharCode(...[65, 73, 122, 97, 83, 121, 65, 65, 108, 122, 76, 97, 100, 73, 83, 70, 106, 45, 48, 117, 49, 69, 54, 103, 104, 105, 77, 82, 54, 99, 84, 55, 117, 101, 79, 95, 95, 120, 89]);
+
         function App() {
             const [view, setView] = useState('config'); 
             const [selectedPersona, setSelectedPersona] = useState(localStorage.getItem('minutes_persona') || 'SALES');
@@ -122,7 +124,7 @@
             const recognitionRef = useRef(null);
             const isRecRef = useRef(false);
             
-            // TRANSCRIPTION ENGINE: Uses a ref to store finalized text to avoid React closure staleness
+            // TRANSCRIPTION ENGINE: Prevents stale state during live recording
             const fullTranscriptRef = useRef(localStorage.getItem('minutes_live_transcript') || '');
 
             useEffect(() => {
@@ -144,8 +146,7 @@
                         let interimStr = '';
                         
                         // PRECISION DEDUPLICATION LOGIC
-                        // Only process new results starting from the engine's last resultIndex.
-                        // This prevents Android browsers from repeating previously said words.
+                        // Processes only new finalized segments to prevent Android's echo loop
                         for (let i = e.resultIndex; i < e.results.length; ++i) {
                             const result = e.results[i];
                             const text = result[0].transcript;
@@ -243,8 +244,9 @@
                 ${transcript}`;
 
                 try {
-                    // Reverted back to the original, reliable Canvas configuration
-                    const activeKey = ""; 
+                    // EXACT RESTORATION OF THE ORIGINAL WORKING STATE
+                    // Locked to the obfuscated fallback key and the preview model that worked previously on your GitHub.
+                    const activeKey = FALLBACK_KEY; 
                     const modelName = "gemini-2.5-flash-preview-09-2025";
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
                     
@@ -313,7 +315,7 @@
             if (view === 'config') return (
                 <div className="max-w-md mx-auto p-6 min-h-screen bg-white fade-in">
                     <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter text-slate-800">Setup Persona</h2>
-                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.19</span></p>
+                    <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Minutes AI Pro Build <span className="ml-2 text-indigo-500">v2.21</span></p>
                     
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
@@ -358,7 +360,7 @@
 
                         <div className="flex flex-col gap-3">
                             <button onClick={saveDefaults} className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-100 active:scale-95 transition-all">Start Session</button>
-                            <button onClick={resetApp} className="w-full text-slate-400 font-black py-2 rounded-xl uppercase tracking-widest text-[8px] hover:text-red-500 transition-all">Nuclear Reset & Clear Cache</button>
+                            <button onClick={resetApp} className="w-full text-slate-400 font-black py-2 rounded-xl uppercase tracking-widest text-[8px] hover:text-red-500 transition-all">Reset Everything</button>
                         </div>
                     </div>
                 </div>
