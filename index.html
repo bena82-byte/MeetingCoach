@@ -171,31 +171,45 @@
                 rec.interimResults = true;
                 rec.lang = 'en-US';
 
-                // ANTI-REPETITION LOGIC (Android Fix)
+                // ANTI-REPETITION LOGIC (Android/iOS Fix)
                 rec.onresult = (e) => {
                     if (!isRecordingRef.current) return;
+                    
+                    // Rebuild map from scratch every result to catch Android shifting bugs
+                    sessionMapRef.current.clear();
                     let interimStr = '';
+                    let lastFinal = '';
 
-                    for (let x = e.resultIndex; x < e.results.length; ++x) {
-                        const result = e.results[x];
+                    for (let i = 0; i < e.results.length; ++i) {
+                        const result = e.results[i];
                         const text = result[0].transcript;
                         
                         if (result.isFinal) {
-                            // Map prevents Android from duplicating the same index slot
-                            sessionMapRef.current.set(x, text.trim());
+                            const cleanText = text.trim();
+                            // BLOCKER 1: Prevent consecutive duplicated sentences (Android bug)
+                            if (cleanText && cleanText !== lastFinal) {
+                                sessionMapRef.current.set(i, cleanText);
+                                lastFinal = cleanText;
+                            }
                         } else {
                             interimStr += text;
                         }
                     }
 
-                    // Reconstruct from confirmed map values + baseline
                     const sessionFinals = Array.from(sessionMapRef.current.values()).join(' ');
-                    const totalTranscript = (baselineRef.current + ' ' + sessionFinals).trim();
-
-                    if (totalTranscript) {
-                        transcriptRef.current = totalTranscript;
-                        setTranscript(transcriptRef.current);
+                    const cleanBaseline = baselineRef.current.trim();
+                    
+                    let totalTranscript = cleanBaseline;
+                    
+                    // BLOCKER 2: Prevent overlap if the engine restarted and heard the last phrase again
+                    if (sessionFinals) {
+                        if (!cleanBaseline.endsWith(sessionFinals)) {
+                            totalTranscript = (cleanBaseline + ' ' + sessionFinals).trim();
+                        }
                     }
+
+                    transcriptRef.current = totalTranscript;
+                    setTranscript(transcriptRef.current);
                     setInterimTranscript(interimStr);
                 };
 
@@ -209,10 +223,13 @@
                 };
 
                 rec.onend = () => {
-                    // Commit map to baseline and clear map for the next restart
+                    // Commit map to baseline securely
                     const sessionFinals = Array.from(sessionMapRef.current.values()).join(' ');
                     if (sessionFinals) {
-                        baselineRef.current = (baselineRef.current + ' ' + sessionFinals).trim() + ' ';
+                        const cleanBaseline = baselineRef.current.trim();
+                        if (!cleanBaseline.endsWith(sessionFinals)) {
+                            baselineRef.current = (cleanBaseline + ' ' + sessionFinals).trim() + ' ';
+                        }
                     }
                     sessionMapRef.current.clear();
 
@@ -471,7 +488,7 @@ ${text}`;
                                         <span className="ml-2 text-[11px] px-2 py-0.5 bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded -skew-x-12 shadow-sm tracking-widest">PRO</span>
                                     </h1>
                                 </div>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Master Build <span className="text-indigo-500">v2.34</span></p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Master Build <span className="text-indigo-500">v2.35</span></p>
                             </div>
                             
                             <div className="space-y-6">
