@@ -126,6 +126,36 @@
                 prompt: "Use the user's custom instructions."
             }
         };
+
+        // ANDROID ECHO/REPETITION FIX
+        // This math algorithm intercepts incoming phrases and slices out exact duplicates.
+        const removeOverlap = (base, addition) => {
+            if (!base) return addition || '';
+            if (!addition) return base || '';
+            const a = base.trim(); const b = addition.trim();
+            if (!a) return b; if (!b) return a;
+            
+            const aWords = a.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean);
+            const bWords = b.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean);
+            
+            const maxWords = Math.min(aWords.length, bWords.length, 10);
+            let overlap = 0;
+            for (let i = maxWords; i > 0; i--) {
+                if (aWords.slice(-i).join(' ') === bWords.slice(0, i).join(' ')) {
+                    // Prevent slicing off single common connector words accidentally
+                    if (i === 1 && aWords.length > 1 && bWords.length > 1 && ['the','a','an','and','is','it','to','that','of','in','on','at'].includes(aWords[aWords.length-1])) {
+                        continue;
+                    }
+                    overlap = i;
+                    break;
+                }
+            }
+            if (overlap > 0) {
+                const bOrig = b.split(/\s+/).filter(Boolean);
+                return a + ' ' + bOrig.slice(overlap).join(' ');
+            }
+            return a + ' ' + b;
+        };
         // ---------------------------------------------------------
 
         function App() {
@@ -151,9 +181,7 @@
             const animationTimerRef = useRef(null);
             const isRecordingRef = useRef(false);
             
-            // Baseline text from previous recording chunks (solves continuous restart bug)
             const baselineRef = useRef(localStorage.getItem('minutes_live_transcript') || '');
-            // Map to hold index-specific phrases (solves Android duplicate phrase bug)
             const sessionMapRef = useRef(new Map());
             const transcriptRef = useRef(localStorage.getItem('minutes_live_transcript') || '');
 
@@ -171,45 +199,35 @@
                 rec.interimResults = true;
                 rec.lang = 'en-US';
 
-                // ANTI-REPETITION LOGIC (Android/iOS Fix)
                 rec.onresult = (e) => {
                     if (!isRecordingRef.current) return;
-                    
-                    // Rebuild map from scratch every result to catch Android shifting bugs
-                    sessionMapRef.current.clear();
                     let interimStr = '';
-                    let lastFinal = '';
 
-                    for (let i = 0; i < e.results.length; ++i) {
-                        const result = e.results[i];
+                    // Step 1: Gather raw incoming phrases
+                    for (let x = e.resultIndex; x < e.results.length; ++x) {
+                        const result = e.results[x];
                         const text = result[0].transcript;
                         
                         if (result.isFinal) {
-                            const cleanText = text.trim();
-                            // BLOCKER 1: Prevent consecutive duplicated sentences (Android bug)
-                            if (cleanText && cleanText !== lastFinal) {
-                                sessionMapRef.current.set(i, cleanText);
-                                lastFinal = cleanText;
-                            }
+                            sessionMapRef.current.set(x, text.trim());
                         } else {
                             interimStr += text;
                         }
                     }
 
-                    const sessionFinals = Array.from(sessionMapRef.current.values()).join(' ');
-                    const cleanBaseline = baselineRef.current.trim();
-                    
-                    let totalTranscript = cleanBaseline;
-                    
-                    // BLOCKER 2: Prevent overlap if the engine restarted and heard the last phrase again
-                    if (sessionFinals) {
-                        if (!cleanBaseline.endsWith(sessionFinals)) {
-                            totalTranscript = (cleanBaseline + ' ' + sessionFinals).trim();
-                        }
+                    // Step 2: Push phrases through Overlap Stripper to eliminate Android repeats
+                    let sessionFinals = '';
+                    for (const [key, text] of sessionMapRef.current.entries()) {
+                        sessionFinals = removeOverlap(sessionFinals, text);
                     }
 
-                    transcriptRef.current = totalTranscript;
-                    setTranscript(transcriptRef.current);
+                    // Step 3: Merge safely with baseline text
+                    const totalTranscript = removeOverlap(baselineRef.current, sessionFinals);
+
+                    if (totalTranscript) {
+                        transcriptRef.current = totalTranscript;
+                        setTranscript(transcriptRef.current);
+                    }
                     setInterimTranscript(interimStr);
                 };
 
@@ -223,13 +241,13 @@
                 };
 
                 rec.onend = () => {
-                    // Commit map to baseline securely
-                    const sessionFinals = Array.from(sessionMapRef.current.values()).join(' ');
+                    let sessionFinals = '';
+                    for (const [key, text] of sessionMapRef.current.entries()) {
+                        sessionFinals = removeOverlap(sessionFinals, text);
+                    }
+                    
                     if (sessionFinals) {
-                        const cleanBaseline = baselineRef.current.trim();
-                        if (!cleanBaseline.endsWith(sessionFinals)) {
-                            baselineRef.current = (cleanBaseline + ' ' + sessionFinals).trim() + ' ';
-                        }
+                        baselineRef.current = removeOverlap(baselineRef.current, sessionFinals) + ' ';
                     }
                     sessionMapRef.current.clear();
 
@@ -488,7 +506,7 @@ ${text}`;
                                         <span className="ml-2 text-[11px] px-2 py-0.5 bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded -skew-x-12 shadow-sm tracking-widest">PRO</span>
                                     </h1>
                                 </div>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Master Build <span className="text-indigo-500">v2.35</span></p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Master Build <span className="text-indigo-500">v2.36</span></p>
                             </div>
                             
                             <div className="space-y-6">
